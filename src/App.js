@@ -19,16 +19,19 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [parentDir, setParentDir] = useState('');
   const [authenticated, setAuthenticated] = useState(false); 
-  const [account, setAccount] = useState(''); // New state
-  const [contract, setContract] = useState(null); // New state
-  const [owners, setOwners] = useState([]); // New state
+  const [account, setAccount] = useState(''); 
+  const [contract, setContract] = useState(null); 
+  const [owners, setOwners] = useState([]); 
+  const [repoDetails, setRepoDetails] = useState(null);
+  let signer = null;
+  let provider;
 
   //authenticating the user
   const authenticate = async () => {
     if (window.ethereum) {
       try {
         // Request account access
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        provider = new ethers.BrowserProvider(window.ethereum)
         const accounts = await provider.send("eth_requestAccounts", []);
         const account = accounts[0];
         console.log('Authenticated with account:', account);
@@ -45,21 +48,18 @@ function App() {
     }
   };
   const handleInit = async () => {
-    const dirName = prompt('Enter the name of the parent directory');
-    await ipfsClient.files.mkdir(`/${dirName}`);
-    console.log('Created directory:', dirName);
-    setParentDir(dirName);
+    //const dirName = prompt('Enter the name of the parent directory');
+    //await ipfsClient.files.mkdir(`/${dirName}`);
+    //console.log('Created directory:', dirName);
+    //setParentDir(dirName);
+    const repoName = prompt('Enter the name of the repository');
     //initialize the contract
     try {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
-      const codeContract = new ethers.Contract("0x5FbDB2315678afecb367f032d93F642f64180aa3", CodeChain.abi, signer);
-      //get the signer address
-      //const address = await signer.getAddress();
-      //await codeContract.setOwnerId(address);
-      //const id = 1;
-      //await codeContract.setProjectId(id);
-      await codeContract.setIPFSHash(dirName);
+      provider = new ethers.BrowserProvider(window.ethereum)
+      signer = await provider.getSigner();
+      const codeContract = new ethers.Contract("0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0", CodeChain.abi, signer);
+      await codeContract.createRepository(repoName);
+      console.log('Created repository:', repoName);
       setContract(codeContract);
     }
     catch (error) {
@@ -92,9 +92,30 @@ function App() {
     fileInput.click();
   };
   const commit = async () => {
+    const repoName = prompt('Enter the name of the repository');
+    const branchName = prompt('Enter the name of the branch');
+    const message = prompt('Enter the commit message');
+    const dirName = prompt('Enter the path of the parent directory');
+    await ipfsClient.files.mkdir(`/${dirName}`);
+    console.log('Created directory:', dirName);
+    setParentDir(dirName);
+
+  
+    try {
+      provider = new ethers.BrowserProvider(window.ethereum)
+      signer = await provider.getSigner();
+
+
+      const { cid } = await ipfsClient.add(dirName);
+      const ipfsHash = cid.toString();
+  
+      await contract.commit(repoName, branchName, message, ipfsHash);
+      console.log('Commit made to repository:', repoName);
+    }
+    catch (error) {
+      console.error('Error making commit:', error);
+    }
   };
-  const clone = async () => {
-  }
   const publish = async () => {
   }
   const retrieve = async () => {
@@ -123,6 +144,18 @@ function App() {
       });
       console.log('Uploaded file:', fileDetails.path);
     };
+  };
+
+  const viewRepo = async () => {
+    const repoName = prompt('Enter the name of the repository');
+    try {
+      const repoDetails = await contract.getCommit(repoName, 1);
+      console.log('Repository details:', repoDetails);
+      setRepoDetails(repoDetails);
+    }
+    catch (error) {
+      console.error('Error fetching repository details:', error);
+    }
   };
 
   
@@ -163,6 +196,28 @@ function App() {
       }
     }
   };
+  const clone = async () => {
+    const repoName = prompt('Enter the name of the repository');
+    try {
+      const latestCommit = await contract.getLatestIpfsHash(repoName, 'main');
+      const ipfsHash = latestCommit.ipfsHash;
+      console.log('Latest commit IPFS hash:', ipfsHash);
+  
+      const zip = new JSZip();
+      await downloadDir(`/ipfs/${ipfsHash}`, zip);
+  
+      zip.generateAsync({ type: 'blob' }).then((content) => {
+        // Trigger download
+        const downloadLink = document.createElement('a');
+        downloadLink.href = URL.createObjectURL(content);
+        downloadLink.download = `${repoName}.zip`;
+        downloadLink.click();
+      });
+    }
+    catch (error) {
+      console.error('Error cloning repository:', error);
+    }
+  };
 
   return (
     <div className="App">
@@ -171,12 +226,23 @@ function App() {
         <div style={{ position: 'absolute', top: 0, right: 0, padding: '1em' }}>
           {account}
         </div>
+        <button onClick={viewRepo} disabled={!authenticated}>View Repo</button>
+        {repoDetails && (
+          <div>
+            <h2>Repository Details</h2>
+            <p>Message: {repoDetails.message}</p>
+            <p>Hash: {repoDetails.ipfsHash}</p>
+            {/* Add more fields as needed */}
+          </div>
+        )}
         <button onClick={authenticate}>Connect MetaMask</button> 
         <button onClick={ownership} disabled={!authenticated}>Get Owners</button>
+        <button onClick={clone} disabled={!authenticated}>Clone</button>
         <button onClick={handleInit} disabled={!authenticated}>Init your project</button>
         <button onClick={handleUpload} disabled={!authenticated || uploading}>
           {uploading ? 'Uploading...' : 'Upload'}
         </button>
+        <button onClick={commit} disabled={!authenticated}>Commit</button>
         <button onClick={handleDownload} disabled={!authenticated}>Download</button>
       </header>
     </div>

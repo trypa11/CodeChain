@@ -1,46 +1,39 @@
 const { expect } = require("chai");
+const { ethers } = require("hardhat");
 
 describe("CodeChain", function () {
-  let CodeChain, codeChain, owner, addr1, addr2;
+  let CodeChain, codeChain, owner, addr1;
 
   beforeEach(async function () {
     CodeChain = await ethers.getContractFactory("CodeChain");
-    [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
-    codeChain = await CodeChain.deploy(1, owner.address, "Qm...");
+    [owner, addr1] = await ethers.getSigners();
+    codeChain = await CodeChain.deploy();
   });
 
-  describe("Deployment", function () {
-    it("Should set the right owner", async function () {
-      expect(await codeChain.ownerId()).to.equal(owner.address);
-    });
-
-    it("Should set the right projectId", async function () {
-      expect(await codeChain.projectId()).to.equal(1);
-    });
-
-    it("Should set the right IPFS hash", async function () {
-      expect(await codeChain.getIPFSHash()).to.equal("Qm...");
+  describe("createRepository", function () {
+    it("Should create a new repository", async function () {
+      await codeChain.connect(owner).createRepository("repo1");
+      expect(await codeChain.getBranches("repo1")).to.include("main");
     });
   });
 
-  describe("setIPFSHash", function () {
-    it("Should set the IPFS hash", async function () {
-      await codeChain.connect(owner).setIPFSHash("QmNewHash");
-      expect(await codeChain.getIPFSHash()).to.equal("QmNewHash");
-    });
-
-    it("Should fail if someone else tries to set the IPFS hash", async function () {
-      await expect(codeChain.connect(addr1).setIPFSHash("QmNewHash")).to.be.revertedWith("Only the owner can set the IPFS hash");
+  describe("createBranch", function () {
+    it("Should create a new branch in a repository", async function () {
+      await codeChain.connect(owner).createRepository("repo1");
+      await codeChain.connect(owner).createBranch("repo1", "branch1");
+      expect(await codeChain.getBranches("repo1")).to.include("branch1");
     });
   });
 
-  describe("getIPFSHash", function () {
-    it("Should return the IPFS hash", async function () {
-      expect(await codeChain.getIPFSHash()).to.equal("Qm...");
-    });
-
-    it("Should fail if someone else tries to get the IPFS hash", async function () {
-      await expect(codeChain.connect(addr1).getIPFSHash()).to.be.revertedWith("Only the owner can set the IPFS hash");
+  describe("commit", function () {
+    it("Should create a new commit in a branch", async function () {
+      await codeChain.connect(owner).createRepository("repo1");
+      await codeChain.connect(owner).createBranch("repo1", "branch1");
+      await codeChain.connect(owner).commit("repo1", "branch1", "message1", "ipfsHash1");
+      const latestCommitId = await codeChain.getLatestCommitId("repo1", "branch1");
+      const [message, ipfsHash] = await codeChain.getCommit("repo1", latestCommitId);
+      expect(message).to.equal("message1");
+      expect(ipfsHash).to.equal("ipfsHash1");
     });
   });
 });
