@@ -8,6 +8,7 @@ contract CodeChain {
         string message;
         string ipfsHash;
         uint256 parentId;
+        address author;
     }
 
     struct Branch {
@@ -21,6 +22,7 @@ contract CodeChain {
         mapping(uint256 => Commit) commits;
         mapping(string => Branch) branches;
         string[] branchNames;
+        address[] collaborators;
     }
 
     mapping(string => Repository) repositories;
@@ -45,6 +47,8 @@ contract CodeChain {
         repositories[repoName].name = repoName;
         repositories[repoName].branches["main"].name = "main";  // Default branch
         repositories[repoName].branchNames.push("main");
+        repositories[repoName].latestCommitId = 0;
+        repositories[repoName].collaborators.push(msg.sender);
         repoNames.push(repoName);
 
         emit RepositoryCreated(repoName);
@@ -67,7 +71,8 @@ contract CodeChain {
         repo.commits[commitId] = Commit({
             message: message,
             ipfsHash: ipfsHash,
-            parentId: branch.latestCommitId
+            parentId: branch.latestCommitId,
+            author: msg.sender
         });
 
         branch.latestCommitId = commitId;
@@ -93,4 +98,12 @@ contract CodeChain {
     uint256 latestCommitId = repositories[repoName].branches[branchName].latestCommitId;
     return repositories[repoName].commits[latestCommitId].ipfsHash;
     }
+    //create a function who will add a new collaborator to the repository if he would pay a fee of 1 ether 
+    function addCollaborator(string memory repoName, address collaborator) public payable repoExists(repoName) {
+        require(msg.value == 1 ether, "You need to pay 1 ether to become a collaborator");
+        repositories[repoName].collaborators.push(collaborator);
+    }
+    //add a pull request function that all the collaborators except the author can approve the pull request to the main branch with a voting system
+
+
 }
