@@ -57,10 +57,11 @@ function App() {
     try {
       provider = new ethers.BrowserProvider(window.ethereum)
       signer = await provider.getSigner();
-      const codeContract = new ethers.Contract("0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0", CodeChain.abi, signer);
+      const codeContract = new ethers.Contract("0x5FbDB2315678afecb367f032d93F642f64180aa3", CodeChain.abi, signer);
       await codeContract.createRepository(repoName);
       console.log('Created repository:', repoName);
       setContract(codeContract);
+
     }
     catch (error) {
       console.error('Error initializing contract:', error);
@@ -149,7 +150,7 @@ function App() {
   const viewRepo = async () => {
     const repoName = prompt('Enter the name of the repository');
     try {
-      const repoDetails = await contract.getCommit(repoName, 1);
+      const repoDetails=await contract.getRepositoryInfo(repoName);
       console.log('Repository details:', repoDetails);
       setRepoDetails(repoDetails);
     }
@@ -218,6 +219,42 @@ function App() {
       console.error('Error cloning repository:', error);
     }
   };
+  const joinAsCollaborator = async () => {
+    const repoName = prompt('Enter the name of the repository');
+    if (!repoName) {
+      console.error('Repository name is required');
+      return;
+    }
+  
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const userAddress = await signer.getAddress(); // Get the user's address
+  
+
+  
+  
+      // Ensure the user is not already a collaborator
+      const isCollaborator = await contract.isCollaborator(repoName, userAddress);
+      if (isCollaborator) {
+        console.error('User is already a collaborator');
+        return;
+      }
+  
+      const txOptions = {
+        value: ethers.parseEther('10.0')
+      };
+  
+      const tx = await contract.connect(signer).addCollaborator(repoName, userAddress, txOptions);
+      await tx.wait();
+  
+      console.log('Joined as collaborator for repository:', repoName);
+    } catch (error) {
+      console.error('Error joining as collaborator:', error);
+    }
+  };
+  
+  
 
   return (
     <div className="App">
@@ -230,14 +267,16 @@ function App() {
         {repoDetails && (
           <div>
             <h2>Repository Details</h2>
-            <p>Message: {repoDetails.message}</p>
-            <p>Hash: {repoDetails.ipfsHash}</p>
-            {/* Add more fields as needed */}
+            <p>Name: {repoDetails[0]}</p>
+            <p>Latest Commit ID: {repoDetails[1]}</p>
+            <p>Branches: {repoDetails[2].join(', ')}</p>
+            <p>Collaborators: {repoDetails[3].join(', ')}</p>
           </div>
         )}
         <button onClick={authenticate}>Connect MetaMask</button> 
         <button onClick={ownership} disabled={!authenticated}>Get Owners</button>
         <button onClick={clone} disabled={!authenticated}>Clone</button>
+        <button onClick={joinAsCollaborator} disabled={!authenticated}>Join as Collaborator</button>
         <button onClick={handleInit} disabled={!authenticated}>Init your project</button>
         <button onClick={handleUpload} disabled={!authenticated || uploading}>
           {uploading ? 'Uploading...' : 'Upload'}
