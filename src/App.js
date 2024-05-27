@@ -21,8 +21,9 @@ function App() {
   const [authenticated, setAuthenticated] = useState(false); 
   const [account, setAccount] = useState(''); 
   const [contract, setContract] = useState(null); 
-  const [owners, setOwners] = useState([]); 
   const [repoDetails, setRepoDetails] = useState(null);
+  const [dirIpfsHash, setDirIpfsHash] = useState('');
+  const [latestIpfsHash, setLatestIpfsHash] = useState('');
   let signer = null;
   let provider;
 
@@ -37,6 +38,10 @@ function App() {
         console.log('Authenticated with account:', account);
         setAuthenticated(true);
         setAccount(account); // Set account state
+        //
+        signer = await provider.getSigner();
+        const codeContract = new ethers.Contract("0x5FbDB2315678afecb367f032d93F642f64180aa3", CodeChain.abi, signer);
+        setContract(codeContract);
         console.log('Authenticated with account:', account);
       } catch (error) {
         // User denied account access...
@@ -48,20 +53,10 @@ function App() {
     }
   };
   const handleInit = async () => {
-    //const dirName = prompt('Enter the name of the parent directory');
-    //await ipfsClient.files.mkdir(`/${dirName}`);
-    //console.log('Created directory:', dirName);
-    //setParentDir(dirName);
     const repoName = prompt('Enter the name of the repository');
-    //initialize the contract
     try {
-      provider = new ethers.BrowserProvider(window.ethereum)
-      signer = await provider.getSigner();
-      const codeContract = new ethers.Contract("0x5FbDB2315678afecb367f032d93F642f64180aa3", CodeChain.abi, signer);
-      await codeContract.createRepository(repoName);
+      await contract.createRepository(repoName);
       console.log('Created repository:', repoName);
-      setContract(codeContract);
-
     }
     catch (error) {
       console.error('Error initializing contract:', error);
@@ -78,16 +73,31 @@ function App() {
     fileInput.addEventListener('change', async (event) => {
       const files = event.target.files;
       const filesArray = Array.from(files);
+      
+      // Structure to maintain the directory hierarchy
       const directoryStructure = filesArray.reduce((acc, file) => {
         const pathParts = file.webkitRelativePath.split('/');
         pathParts.pop(); // remove the file name
         acc[file.webkitRelativePath] = pathParts.join('/');
         return acc;
       }, {});
+  
+      // Upload each file to IPFS
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        await uploadFile(file, directoryStructure[file.webkitRelativePath]);
+        const dirPath = directoryStructure[file.webkitRelativePath];
+        
+        // Add the file to IPFS under the correct directory
+        const content = await file.arrayBuffer(); // get file content as ArrayBuffer
+        await ipfsClient.files.write(`/${dirPath}/${file.name}`, content, { create: true, parents: true });
       }
+  
+      // Get the IPFS hash of the local parent directory
+      const parentDir = directoryStructure[filesArray[0].webkitRelativePath];
+      const ipfsHash = await ipfsClient.files.stat(`/${parentDir}`);
+      
+      console.log('IPFS Hash:', ipfsHash.cid.toString());
+      setDirIpfsHash(ipfsHash.cid.toString());
     });
   
     fileInput.click();
@@ -96,19 +106,11 @@ function App() {
     const repoName = prompt('Enter the name of the repository');
     const branchName = prompt('Enter the name of the branch');
     const message = prompt('Enter the commit message');
-    const dirName = prompt('Enter the path of the parent directory');
-    await ipfsClient.files.mkdir(`/${dirName}`);
-    console.log('Created directory:', dirName);
-    setParentDir(dirName);
-
-  
     try {
       provider = new ethers.BrowserProvider(window.ethereum)
       signer = await provider.getSigner();
-
-
-      const { cid } = await ipfsClient.add(dirName);
-      const ipfsHash = cid.toString();
+      
+      const ipfsHash = dirIpfsHash;
   
       await contract.commit(repoName, branchName, message, ipfsHash);
       console.log('Commit made to repository:', repoName);
@@ -117,35 +119,11 @@ function App() {
       console.error('Error making commit:', error);
     }
   };
+
+  
   const publish = async () => {
   }
-  const retrieve = async () => {
-  }
-  const ownership = async () => {
-    try {
-      const owners = await contract.getOwners();
-      setOwners(owners);
-      console.log('Owners:', owners);
-    } catch (error) {
-      console.error('Error getting owners:', error);
-    }
-  };
-  const uploadFile = async (file, relativePath) => {
-    const reader = new window.FileReader();
-    reader.readAsArrayBuffer(file);
-    reader.onloadend = async () => {
-      const buffer = Buffer.from(reader.result);
-      const fileDetails = {
-        path: `/${parentDir}/${relativePath}/${file.name}`, // Include parent directory and relative path in the file path
-        content: buffer,
-      };
-      await ipfsClient.files.write(fileDetails.path, fileDetails.content, {
-        create: true,
-        parents: true,
-      });
-      console.log('Uploaded file:', fileDetails.path);
-    };
-  };
+
 
   const viewRepo = async () => {
     const repoName = prompt('Enter the name of the repository');
@@ -178,48 +156,65 @@ function App() {
       downloadLink.click();
     });
   };
-  
   const downloadDir = async (dirPath, zipFolder) => {
-    const files = await ipfsClient.files.ls(dirPath);
-  
-    for await (const file of files) {
-      if (file.type === 'file') {
-        const fileStream = ipfsClient.cat(file.cid);
-        const chunks = [];
-        for await (const chunk of fileStream) {
-          chunks.push(chunk);
-        }
-        const fileData = Buffer.concat(chunks);
-        zipFolder.file(file.name, fileData);
-      } else if (file.type === 'directory') {
-        const subFolder = zipFolder.folder(file.name);
-        await downloadDir(`${dirPath}/${file.name}`, subFolder);
-      }
-    }
-  };
-  const clone = async () => {
-    const repoName = prompt('Enter the name of the repository');
     try {
-      const latestCommit = await contract.getLatestIpfsHash(repoName, 'main');
-      const ipfsHash = latestCommit.ipfsHash;
-      console.log('Latest commit IPFS hash:', ipfsHash);
-  
-      const zip = new JSZip();
-      await downloadDir(`/ipfs/${ipfsHash}`, zip);
-  
-      zip.generateAsync({ type: 'blob' }).then((content) => {
-        // Trigger download
-        const downloadLink = document.createElement('a');
-        downloadLink.href = URL.createObjectURL(content);
-        downloadLink.download = `${repoName}.zip`;
-        downloadLink.click();
-      });
+        const files = await ipfsClient.files.ls(dirPath);
+
+        for await (const file of files) {
+            if (file.type === 'file') {
+                const fileDataStream = ipfsClient.cat(file.cid);
+                const chunks = [];
+                for await (const chunk of fileDataStream) {
+                    chunks.push(chunk);
+                }
+                const fileData = Buffer.concat(chunks);
+                zipFolder.file(file.name, fileData);
+            } else if (file.type === 'directory') {
+                const subFolder = zipFolder.folder(file.name);
+                await downloadDir(`${dirPath}/${file.name}`, subFolder);
+            }
+        }
+    } catch (error) {
+        console.error('Error downloading directory:', error);
+        throw error; // Rethrow the error to be caught by the caller
     }
-    catch (error) {
-      console.error('Error cloning repository:', error);
-    }
+  } ;
+
+  const clone = async () => {
+      try {
+          const repoName = prompt('Enter the name of the repository');
+          if (!repoName) {
+              console.error('Repository name is required');
+              return;
+          }
+          const branchName = prompt('Enter the name of the branch');
+          if (!branchName) {
+              console.error('Branch name is required');
+              return;
+          }
+
+          const latestCommitHash = await contract.getLatestIpfsHash(repoName, branchName);
+          console.log('Latest commit IPFS hash:', latestCommitHash);
+          
+          const ipfsPath = `/ipfs/${latestCommitHash}`;
+          console.log('Downloading directory from IPFS path:', ipfsPath);
+          
+          const zip = new JSZip();
+          await downloadDir(ipfsPath, zip);
+
+          zip.generateAsync({ type: 'blob' }).then((content) => {
+              // Trigger download
+              const downloadLink = document.createElement('a');
+              downloadLink.href = URL.createObjectURL(content);
+              downloadLink.download = `${repoName}.zip`;
+              downloadLink.click();
+          });
+      } catch (error) {
+          console.error('Error cloning repository:', error);
+      }
   };
-  const joinAsCollaborator = async () => {
+
+   const joinAsCollaborator = async () => {
     const repoName = prompt('Enter the name of the repository');
     if (!repoName) {
       console.error('Repository name is required');
@@ -253,8 +248,13 @@ function App() {
       console.error('Error joining as collaborator:', error);
     }
   };
-  
-  
+  const getLatestIpfsHash = async () => {
+    const repoName = prompt('Enter the name of the repository');
+    const branchName = prompt('Enter the name of the branch');
+    const ipfsHash = await contract.getLatestIpfsHash(repoName, branchName);
+    setLatestIpfsHash(ipfsHash);
+  };
+
 
   return (
     <div className="App">
@@ -274,13 +274,14 @@ function App() {
           </div>
         )}
         <button onClick={authenticate}>Connect MetaMask</button> 
-        <button onClick={ownership} disabled={!authenticated}>Get Owners</button>
         <button onClick={clone} disabled={!authenticated}>Clone</button>
-        <button onClick={joinAsCollaborator} disabled={!authenticated}>Join as Collaborator</button>
-        <button onClick={handleInit} disabled={!authenticated}>Init your project</button>
         <button onClick={handleUpload} disabled={!authenticated || uploading}>
           {uploading ? 'Uploading...' : 'Upload'}
         </button>
+        <button onClick={getLatestIpfsHash} disabled={!authenticated}>Get Latest IPFS Hash</button>
+      <p>Latest IPFS Hash: {latestIpfsHash}</p>
+        <button onClick={joinAsCollaborator} disabled={!authenticated}>Join as Collaborator</button>
+        <button onClick={handleInit} disabled={!authenticated}>Init your project</button>
         <button onClick={commit} disabled={!authenticated}>Commit</button>
         <button onClick={handleDownload} disabled={!authenticated}>Download</button>
       </header>

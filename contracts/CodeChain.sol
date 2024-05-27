@@ -87,7 +87,7 @@ contract CodeChain {
     
 
 
-    function commit(string memory repoName, string memory branchName, string memory message, string memory ipfsHash) public repoExists(repoName) branchExists(repoName, branchName) {
+    function commit(string memory repoName, string memory branchName, string memory message, string memory ipfsHash) public repoExists(repoName) branchExists(repoName, branchName) onlyCollaborator(repoName){
         Repository storage repo = repositories[repoName];
         Branch storage branch = repo.branches[branchName];
 
@@ -103,52 +103,18 @@ contract CodeChain {
 
         emit CommitMade(repoName, branchName, commitId, message, ipfsHash);
     }
-    function createPullRequest(string memory repoName, string memory fromBranch, string memory toBranch, uint256 commitId) public repoExists(repoName) branchExists(repoName, fromBranch) branchExists(repoName, toBranch) onlyCollaborator(repoName) {
-    Repository storage repo = repositories[repoName];
-    require(commitId <= repo.latestCommitId, "Invalid commit id");
 
-    uint256 pullRequestId = repo.latestPullRequestId + 1;
-    PullRequest storage newPullRequest = repo.pullRequests[pullRequestId];
-    newPullRequest.fromBranch = fromBranch;
-    newPullRequest.toBranch = toBranch;
-    newPullRequest.author = msg.sender;
-    newPullRequest.commitId = commitId;
-    newPullRequest.status = false;
 
-    repo.latestPullRequestId = pullRequestId;
 
-    emit PullRequestCreated(repoName, pullRequestId, fromBranch, toBranch, commitId, msg.sender);
-}
-
-function approvePullRequest(string memory repoName, uint256 pullRequestId) public repoExists(repoName) onlyCollaborator(repoName) {
-    Repository storage repo = repositories[repoName];
-    require(pullRequestId <= repo.latestPullRequestId, "Invalid pull request id");
-    PullRequest storage pullRequest = repo.pullRequests[pullRequestId];
-    require(!pullRequest.status, "Pull request already merged");
-    for (uint i = 0; i < pullRequest.approvals.length; i++) {
-        require(pullRequest.approvals[i] != msg.sender, "Pull request already approved by the caller");
-    }
-
-    pullRequest.approvals.push(msg.sender);
-    pullRequest.status = true; // Update the status to true after approval
-
-    emit PullRequestApproved(repoName, pullRequestId, msg.sender);
-}
-function mergePullRequest(string memory repoName, uint256 pullRequestId) public repoExists(repoName) onlyCollaborator(repoName) {
-    Repository storage repo = repositories[repoName];
-    require(pullRequestId <= repo.latestPullRequestId, "Invalid pull request id");
-    PullRequest storage pullRequest = repo.pullRequests[pullRequestId];
-    require(pullRequest.status, "Pull request not approved");
-
-    Branch storage toBranch = repo.branches[pullRequest.toBranch];
-    toBranch.latestCommitId = pullRequest.commitId;
-
-    delete repo.pullRequests[pullRequestId]; 
-}
-
-    function getCommit(string memory repoName, uint256 commitId) public view repoExists(repoName) returns (string memory message, string memory ipfsHash, uint256 parentId, bool isApproved) {
-        Commit storage selectedCommit = repositories[repoName].commits[commitId];
-        return (selectedCommit.message, selectedCommit.ipfsHash, selectedCommit.parentId, selectedCommit.isApproved);
+    function getCommit(string memory repoName, uint256 commitId) public view repoExists(repoName) returns (
+        string memory message, 
+        string memory ipfsHash, 
+        uint256 parentId, 
+        address author
+    ) 
+    {
+        Commit storage newCommit = repositories[repoName].commits[commitId];
+        return (newCommit.message, newCommit.ipfsHash, newCommit.parentId, newCommit.author);
     }
 
     function getLatestCommitId(string memory repoName, string memory branchName) public view repoExists(repoName) branchExists(repoName, branchName) returns (uint256) {
@@ -157,6 +123,9 @@ function mergePullRequest(string memory repoName, uint256 pullRequestId) public 
 
     function getBranches(string memory repoName) public view repoExists(repoName) returns (string[] memory) {
         return repositories[repoName].branchNames;
+    }
+    function getRepositories() public view returns (string[] memory) {
+        return repoNames;
     }
 
     function getLatestIpfsHash(string memory repoName, string memory branchName) public view repoExists(repoName) branchExists(repoName, branchName) returns (string memory) {
@@ -201,8 +170,6 @@ function mergePullRequest(string memory repoName, uint256 pullRequestId) public 
         Repository storage repo = repositories[repoName];
         return (repo.name, repo.latestCommitId, repo.branchNames, repo.collaborators);
     }
-
-
 
 }
 
