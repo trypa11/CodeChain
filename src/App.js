@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { create } from 'kubo-rpc-client';
 import { Buffer } from 'buffer';
 import JSZip from 'jszip';
+import saveAs from 'file-saver';
 
 
 import CodeChain from './artifacts/contracts/CodeChain.sol/CodeChain.json';
@@ -9,7 +10,7 @@ import CodeChain from './artifacts/contracts/CodeChain.sol/CodeChain.json';
 
 const { ethers } = require("ethers");
 const ipfsClient = create({ host: 'localhost', port: 5001, protocol: 'http' });
-const URL = 'http://127.0.0.1:8545/';
+const URL_blchain = 'http://127.0.0.1:8545/';
 //const provider = new ethers.providers.JsonRpcProvider(URL);
 //console.log('Provider:', provider);
 
@@ -17,7 +18,6 @@ const URL = 'http://127.0.0.1:8545/';
 
 function App() {
   const [uploading, setUploading] = useState(false);
-  const [parentDir, setParentDir] = useState('');
   const [authenticated, setAuthenticated] = useState(false); 
   const [account, setAccount] = useState(''); 
   const [contract, setContract] = useState(null); 
@@ -122,6 +122,11 @@ function App() {
 
   
   const publish = async () => {
+    provider = new ethers.BrowserProvider(window.ethereum);
+    signer = await provider.getSigner();
+    const repoName = prompt('Enter the name of the repository');
+
+    await contract.getRepositoryPublic(repoName);
   }
 
 
@@ -139,79 +144,35 @@ function App() {
 
   
 
-  const handleDownload = async () => {
-    if (!parentDir) {
-      alert('Please initialize the project first.');
-      return;
-    }
-  
-    const zip = new JSZip();
-    await downloadDir(`/${parentDir}`, zip);
-  
-    zip.generateAsync({ type: 'blob' }).then((content) => {
-      // Trigger download
-      const downloadLink = document.createElement('a');
-      downloadLink.href = URL.createObjectURL(content);
-      downloadLink.download = `${parentDir}.zip`;
-      downloadLink.click();
-    });
-  };
-  const downloadDir = async (dirPath, zipFolder) => {
-    try {
-        const files = await ipfsClient.files.ls(dirPath);
 
-        for await (const file of files) {
-            if (file.type === 'file') {
-                const fileDataStream = ipfsClient.cat(file.cid);
-                const chunks = [];
-                for await (const chunk of fileDataStream) {
-                    chunks.push(chunk);
-                }
-                const fileData = Buffer.concat(chunks);
-                zipFolder.file(file.name, fileData);
-            } else if (file.type === 'directory') {
-                const subFolder = zipFolder.folder(file.name);
-                await downloadDir(`${dirPath}/${file.name}`, subFolder);
-            }
-        }
-    } catch (error) {
-        console.error('Error downloading directory:', error);
-        throw error; // Rethrow the error to be caught by the caller
-    }
-  } ;
+
 
   const clone = async () => {
-      try {
-          const repoName = prompt('Enter the name of the repository');
-          if (!repoName) {
-              console.error('Repository name is required');
-              return;
-          }
-          const branchName = prompt('Enter the name of the branch');
-          if (!branchName) {
-              console.error('Branch name is required');
-              return;
-          }
-
-          const latestCommitHash = await contract.getLatestIpfsHash(repoName, branchName);
-          console.log('Latest commit IPFS hash:', latestCommitHash);
-          
-          const ipfsPath = `/ipfs/${latestCommitHash}`;
-          console.log('Downloading directory from IPFS path:', ipfsPath);
-          
-          const zip = new JSZip();
-          await downloadDir(ipfsPath, zip);
-
-          zip.generateAsync({ type: 'blob' }).then((content) => {
-              // Trigger download
-              const downloadLink = document.createElement('a');
-              downloadLink.href = URL.createObjectURL(content);
-              downloadLink.download = `${repoName}.zip`;
-              downloadLink.click();
-          });
-      } catch (error) {
-          console.error('Error cloning repository:', error);
+    try {
+      const repoName = prompt('Enter the name of the repository');
+      if (!repoName) {
+        console.error('Repository name is required');
+        return;
       }
+      const branchName = prompt('Enter the name of the branch');
+      if (!branchName) {
+        console.error('Branch name is required');
+        return;
+      }
+  
+      const hash = await contract.getLatestIpfsHash(repoName, branchName);
+      console.log('Latest commit IPFS hash:', hash);
+  
+  
+      //const zip = new JSZip();
+
+      await ipfsClient.get('/ipfs'+hash,{compress:true});
+
+      //const zipo = await zip.generateAsync({ type: 'blob' });
+      //saveAs(zipo, `${repoName}.zip`);
+    } catch (error) {
+      console.error('Error downloading folder:', error);
+    }
   };
 
    const joinAsCollaborator = async () => {
@@ -254,6 +215,43 @@ function App() {
     const ipfsHash = await contract.getLatestIpfsHash(repoName, branchName);
     setLatestIpfsHash(ipfsHash);
   };
+  const createBranch = async () => {
+    const repoName = prompt('Enter the name of the repository');
+    const branchName = prompt('Enter the name of the branch');
+    try {
+      await contract.createBranch(repoName, branchName);
+      console.log('Created branch for repository:', repoName);
+    }
+    catch (error) {
+      console.error('Error creating branch:', error);
+    }
+  };
+  const createPullRequest = async () => {
+    const repoName = prompt('Enter the name of the repository');
+    const fromBranch = prompt('Enter the name of the from branch');
+    const toBranch = prompt('Enter the name of the to branch');
+    const commitId = prompt('Enter the commit id');
+    try {
+      await contract.createPullRequest(repoName, fromBranch, toBranch, commitId);
+      console.log('Created pull request for repository:', repoName);
+    }
+    catch (error) {
+      console.error('Error creating pull request:', error);
+    }
+  };
+  
+  const approvePullRequest = async () => {
+    const repoName = prompt('Enter the name of the repository');
+    const pullRequestId = prompt('Enter the pull request id');
+    try {
+      await contract.approvePullRequest(repoName, pullRequestId);
+      console.log('Approved pull request for repository:', repoName);
+    }
+    catch (error) {
+      console.error('Error approving pull request:', error);
+    }
+  };
+
 
 
   return (
@@ -283,8 +281,11 @@ function App() {
         <button onClick={joinAsCollaborator} disabled={!authenticated}>Join as Collaborator</button>
         <button onClick={handleInit} disabled={!authenticated}>Init your project</button>
         <button onClick={commit} disabled={!authenticated}>Commit</button>
-        <button onClick={handleDownload} disabled={!authenticated}>Download</button>
-      </header>
+        <button onClick={createPullRequest} disabled={!authenticated}>Create Pull Request</button>
+        <button onClick={approvePullRequest} disabled={!authenticated}>Approve Pull Request</button>
+        <button onClick={createBranch} disabled={!authenticated}>Create Branch</button>
+        <button onClick={publish} disabled={!authenticated}>Set Public</button>
+        </header>
     </div>
   );
 }
