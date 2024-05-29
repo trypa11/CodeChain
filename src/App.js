@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { create } from 'kubo-rpc-client';
 import { Buffer } from 'buffer';
 import JSZip from 'jszip';
-import saveAs from 'file-saver';
 
 
 import CodeChain from './artifacts/contracts/CodeChain.sol/CodeChain.json';
@@ -162,14 +161,17 @@ function App() {
   
       const hash = await contract.getLatestIpfsHash(repoName, branchName);
       console.log('Latest commit IPFS hash:', hash);
+
+      const files = await ipfsClient.cat(hash);
+      const raw =Buffer.from(files).toString('utf-8');
+      console.log('Raw:', raw);
+      const zip = await JSZip.loadAsync(raw);
+      const zipFiles = await zip.files;
+      console.log('Zip files:', zipFiles);
+      
   
   
-      //const zip = new JSZip();
 
-      await ipfsClient.get('/ipfs'+hash,{compress:true});
-
-      //const zipo = await zip.generateAsync({ type: 'blob' });
-      //saveAs(zipo, `${repoName}.zip`);
     } catch (error) {
       console.error('Error downloading folder:', error);
     }
@@ -181,27 +183,17 @@ function App() {
       console.error('Repository name is required');
       return;
     }
-  
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const userAddress = await signer.getAddress(); // Get the user's address
-  
+    const etherAmount = prompt('Enter the amount of ether to send');
 
   
-  
-      // Ensure the user is not already a collaborator
-      const isCollaborator = await contract.isCollaborator(repoName, userAddress);
-      if (isCollaborator) {
-        console.error('User is already a collaborator');
-        return;
-      }
-  
+    try {
+      const signer = await provider.getSigner();
+
       const txOptions = {
-        value: ethers.parseEther('10.0')
+        value: ethers.parseEther(etherAmount)
       };
   
-      const tx = await contract.connect(signer).addCollaborator(repoName, userAddress, txOptions);
+      const tx = await contract.connect(signer).addCollaborator(repoName, txOptions);
       await tx.wait();
   
       console.log('Joined as collaborator for repository:', repoName);

@@ -39,7 +39,7 @@ contract CodeChain {
 
     mapping(string => Repository) public repositories;
     string[] public repoNames;
-    uint256 public latestPullRequestId;
+    uint256 public latestPullRequestId=0;
 
     event RepositoryCreated(string repoName);
     event BranchCreated(string repoName, string branchName);
@@ -100,6 +100,11 @@ contract CodeChain {
         Repository storage repo = repositories[repoName];
         Branch storage branch = repo.branches[branchName];
 
+        // Check if the branch is the main branch and there are more than 2 collaborators
+        if (keccak256(abi.encodePacked(branchName)) == keccak256(abi.encodePacked("main")) && repo.collaborators.length > 2) {
+            revert("Cannot commit directly to main branch");
+        }
+
         uint256 commitId = repo.latestCommitId + 1;
         Commit storage newCommit = repo.commits[commitId];
         newCommit.message = message;
@@ -113,7 +118,7 @@ contract CodeChain {
         emit CommitMade(repoName, branchName, commitId, message, ipfsHash);
     }
 
-    function createPullRequest(string memory repoName, string memory fromBranch, string memory toBranch, uint256 commitId) public repoExists(repoName) branchExists(repoName, fromBranch) branchExists(repoName, toBranch) onlyCollaborator(repoName) {
+    function createPullRequest(string memory repoName, string memory fromBranch, string memory toBranch, uint256 commitId) public repoExists(repoName) branchExists(repoName, fromBranch) branchExists(repoName, toBranch) onlyCollaborator(repoName)  {
         Repository storage repo = repositories[repoName];
         require(commitId <= repo.latestCommitId, "Invalid commit id");
 
@@ -126,7 +131,9 @@ contract CodeChain {
         newPullRequest.status = false;
 
         emit PullRequestCreated(repoName, fromBranch, toBranch, msg.sender, commitId);
+
     }
+
 
     function approvePullRequest(string memory repoName, uint256 pullRequestId) public repoExists(repoName) onlyCollaborator(repoName) {
         Repository storage repo = repositories[repoName];
@@ -198,10 +205,10 @@ contract CodeChain {
         return repositories[repoName].commits[latestCommitId].ipfsHash;
     }
 
-    function addCollaborator(string memory repoName, address user) public payable repoExists(repoName) {
-        require(msg.value >= 50, "50 wei required to join as a collaborator");
+    function addCollaborator(string memory repoName) public payable repoExists(repoName) {
+        require(msg.value >= 100, "100 wei required to join as a collaborator");
         Repository storage repo = repositories[repoName];
-        require(!isCollaborator(repoName, user), "Address is already a collaborator");
+        require(!isCollaborator(repoName, msg.sender), "Address is already a collaborator");
 
         uint256 numCollaborators = repo.collaborators.length;
         uint256 share = msg.value / numCollaborators;
@@ -210,8 +217,8 @@ contract CodeChain {
             payable(repo.collaborators[i]).transfer(share);
         }
 
-        repo.collaborators.push(user);
-        emit CollaboratorAdded(repoName, user);
+        repo.collaborators.push(msg.sender);
+        emit CollaboratorAdded(repoName, msg.sender);
     }
 
     function isCollaborator(string memory repoName, address user) public view returns (bool) {
@@ -232,6 +239,45 @@ contract CodeChain {
     ) {
         Repository storage repo = repositories[repoName];
         return (repo.name, repo.latestCommitId, repo.branchNames, repo.collaborators);
+    }
+
+    function getPullRequestInfo(string memory repoName, uint256 pullRequestId) public view repoExists(repoName) returns (
+        string memory fromBranch, 
+        string memory toBranch, 
+        address author, 
+        uint256 commitId, 
+        bool status, 
+        address[] memory approvals
+    ) {
+        PullRequest storage pullRequest = repositories[repoName].pullRequests[pullRequestId];
+        return (pullRequest.fromBranch, pullRequest.toBranch, pullRequest.author, pullRequest.commitId, pullRequest.status, pullRequest.approvals);
+    }
+
+
+    function getActivePullRequests(string memory repoName) public view repoExists(repoName) returns (uint256[] memory) {
+        uint256 count = 0;
+        for (uint i = 1; i <= latestPullRequestId; i++) {
+            if (bytes(repositories[repoName].pullRequests[i].fromBranch).length != 0) {
+                count++;
+            }
+        }
+        uint256[] memory activePullRequests = new uint256[](count);
+        uint256 index = 0;
+        for (uint j = 1; j <= latestPullRequestId; j++) {
+            if (bytes(repositories[repoName].pullRequests[j].fromBranch).length != 0) {
+                activePullRequests[index] = j;
+                index++;
+            }
+        }
+        return activePullRequests;
+    } 
+    //get branch info 
+    function getBranchInfo(string memory repoName, string memory branchName) public view repoExists(repoName) branchExists(repoName, branchName) returns (
+        string memory name, 
+        uint256 latestCommitId
+    ) {
+        Branch storage branch = repositories[repoName].branches[branchName];
+        return (branch.name, branch.latestCommitId);
     }
 }
 
