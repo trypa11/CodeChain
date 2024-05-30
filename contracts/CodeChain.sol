@@ -282,8 +282,9 @@ contract CodeChain {
         Branch storage branch = repositories[repoName].branches[branchName];
         return (branch.name, branch.latestCommitId);
     }
-    function getRepositoryDescription(string memory repoName) public view repoExists(repoName) returns (string memory) {
-        return repositories[repoName].description;
+    function setRepoDescription(string memory repoName, string memory description) public repoExists(repoName) onlyCollaborator(repoName) {
+        Repository storage repo = repositories[repoName];
+        repo.description = description;
     }
 }
 
