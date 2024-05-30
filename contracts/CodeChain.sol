@@ -19,6 +19,7 @@ contract CodeChain {
 
     struct Repository {
         string name;
+        string description;
         uint256 latestCommitId;
         mapping(uint256 => Commit) commits;
         mapping(string => Branch) branches;
@@ -72,6 +73,7 @@ contract CodeChain {
         require(bytes(repositories[repoName].name).length == 0, "Repository already exists");
         Repository storage repo = repositories[repoName];
         repo.name = repoName;
+        repo.description = "";
         repo.branches["main"].name = "main";  // Default branch
         repo.branchNames.push("main");
         repo.latestCommitId = 0;
@@ -127,7 +129,7 @@ contract CodeChain {
         newPullRequest.fromBranch = fromBranch;
         newPullRequest.toBranch = toBranch;
         newPullRequest.author = msg.sender;
-        newPullRequest.commitId = commitId;
+        newPullRequest.commitId = repo.branches[fromBranch].latestCommitId;
         newPullRequest.status = false;
 
         emit PullRequestCreated(repoName, fromBranch, toBranch, msg.sender, commitId);
@@ -146,7 +148,7 @@ contract CodeChain {
 
         pullRequest.approvals.push(msg.sender);
         //if its approved by all collaborators except the author
-        if (pullRequest.approvals.length == repo.collaborators.length - 1) {
+        if (pullRequest.approvals.length == repo.collaborators.length - 1 && msg.sender != pullRequest.author) {
             pullRequest.status = true;
             mergePullRequest(repoName, pullRequestId);
         }
@@ -233,12 +235,13 @@ contract CodeChain {
 
     function getRepositoryInfo(string memory repoName) public view repoExists(repoName) isRepoPrivate(repoName) returns (
         string memory name, 
+        string memory description,
         uint256 latestCommitId, 
-        string[] memory branches, 
+        string[] memory branchNames, 
         address[] memory collaborators
     ) {
         Repository storage repo = repositories[repoName];
-        return (repo.name, repo.latestCommitId, repo.branchNames, repo.collaborators);
+        return (repo.name,repo.description ,repo.latestCommitId, repo.branchNames, repo.collaborators);
     }
 
     function getPullRequestInfo(string memory repoName, uint256 pullRequestId) public view repoExists(repoName) returns (
@@ -278,6 +281,9 @@ contract CodeChain {
     ) {
         Branch storage branch = repositories[repoName].branches[branchName];
         return (branch.name, branch.latestCommitId);
+    }
+    function getRepositoryDescription(string memory repoName) public view repoExists(repoName) returns (string memory) {
+        return repositories[repoName].description;
     }
 }
 

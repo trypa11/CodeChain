@@ -1,18 +1,11 @@
 import React, { useState } from 'react';
 import { create } from 'kubo-rpc-client';
-import { Buffer } from 'buffer';
-import JSZip from 'jszip';
-
 
 import CodeChain from './artifacts/contracts/CodeChain.sol/CodeChain.json';
 
 
 const { ethers } = require("ethers");
 const ipfsClient = create({ host: 'localhost', port: 5001, protocol: 'http' });
-const URL_blchain = 'http://127.0.0.1:8545/';
-//const provider = new ethers.providers.JsonRpcProvider(URL);
-//console.log('Provider:', provider);
-
 
 
 function App() {
@@ -161,16 +154,6 @@ function App() {
   
       const hash = await contract.getLatestIpfsHash(repoName, branchName);
       console.log('Latest commit IPFS hash:', hash);
-
-      const files = await ipfsClient.cat(hash);
-      const raw =Buffer.from(files).toString('utf-8');
-      console.log('Raw:', raw);
-      const zip = await JSZip.loadAsync(raw);
-      const zipFiles = await zip.files;
-      console.log('Zip files:', zipFiles);
-      
-  
-  
 
     } catch (error) {
       console.error('Error downloading folder:', error);
