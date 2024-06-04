@@ -166,7 +166,7 @@ summary {
   z-index: 1;
 }
 
-.dropdown:hover .dropdown-menu {
+.dropdown .dropdown-menu {
   display: flex;
 }
 

@@ -108,7 +108,8 @@ function App() {
     }
   };
 
-
+  const [showDropdown, setShowDropdown] = useState(false);
+  const toggleDropdown = () => setShowDropdown(!showDropdown);
 
   return (
     <div className="App" >
@@ -116,15 +117,17 @@ function App() {
         <header className="App-header">
           <div className="header-container">
             <div className="dropdown">
-            <button className="logo-button" onClick={myRepo} >
+            <button className="logo-button" onClick={() => {myRepo(); toggleDropdown();}} >
                 <img src={CodeChain_png} alt="CodeChain Logo" className="codechain-logo-logged-in" />
               </button>
-              <ul className="dropdown-menu">
-                <h2>My Repos</h2>
-                {collaboratorRepos.map((repo, index) => (
-                  <li key={index}>{repo}</li>
-                ))}
-              </ul>
+              {showDropdown && (
+                <ul className="dropdown-menu">
+                  <h2>My Repos</h2>
+                  {collaboratorRepos.map((repo, index) => (
+                    <li key={index}>{repo}</li>
+                  ))}
+                </ul>
+              )}
             </div>
             <input
               className="search-bar"
