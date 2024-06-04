@@ -1,25 +1,35 @@
-import React, { useState } from 'react';
-import { create } from 'kubo-rpc-client';
-
+import React, { useState, useEffect } from 'react';
+import './App.css';
 import CodeChain from './artifacts/contracts/CodeChain.sol/CodeChain.json';
-
+import CodeChain_png from './codechain.png';
 
 const { ethers } = require("ethers");
-const ipfsClient = create({ host: 'localhost', port: 5001, protocol: 'http' });
-
 
 function App() {
-  const [uploading, setUploading] = useState(false);
-  const [authenticated, setAuthenticated] = useState(false); 
-  const [account, setAccount] = useState(''); 
-  const [contract, setContract] = useState(null); 
+  const [authenticated, setAuthenticated] = useState(false);
+  const [account, setAccount] = useState('');
+  const [contract, setContract] = useState(null);
   const [repoDetails, setRepoDetails] = useState(null);
-  const [dirIpfsHash, setDirIpfsHash] = useState('');
-  const [latestIpfsHash, setLatestIpfsHash] = useState('');
+  const [publicRepos, setPublicRepos] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [collaboratorRepos, setCollaboratorRepos] = useState([]);
+
   let signer = null;
   let provider;
 
-  //authenticating the user
+  useEffect(() => {
+    authenticate();
+  }, []);
+
+  useEffect(() => {
+    if (contract) {
+      getAndPrintPublicRepositories();
+    }
+  }, [contract]);
+
+
+
+  // Authenticating the user
   const authenticate = async () => {
     if (window.ethereum) {
       try {
@@ -27,7 +37,6 @@ function App() {
         provider = new ethers.BrowserProvider(window.ethereum)
         const accounts = await provider.send("eth_requestAccounts", []);
         const account = accounts[0];
-        console.log('Authenticated with account:', account);
         setAuthenticated(true);
         setAccount(account); // Set account state
         //
@@ -44,88 +53,10 @@ function App() {
       console.error('Metamask not detected');
     }
   };
-  const handleInit = async () => {
-    const repoName = prompt('Enter the name of the repository');
+
+  const viewRepo = async (repoName) => {
     try {
-      await contract.createRepository(repoName);
-      console.log('Created repository:', repoName);
-    }
-    catch (error) {
-      console.error('Error initializing contract:', error);
-    }
-  };
-
-  const handleUpload = async () => {
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.webkitdirectory = true;
-    fileInput.directory = '';
-    fileInput.style.display = 'none';
-  
-    fileInput.addEventListener('change', async (event) => {
-      const files = event.target.files;
-      const filesArray = Array.from(files);
-      
-      // Structure to maintain the directory hierarchy
-      const directoryStructure = filesArray.reduce((acc, file) => {
-        const pathParts = file.webkitRelativePath.split('/');
-        pathParts.pop(); // remove the file name
-        acc[file.webkitRelativePath] = pathParts.join('/');
-        return acc;
-      }, {});
-  
-      // Upload each file to IPFS
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const dirPath = directoryStructure[file.webkitRelativePath];
-        
-        // Add the file to IPFS under the correct directory
-        const content = await file.arrayBuffer(); // get file content as ArrayBuffer
-        await ipfsClient.files.write(`/${dirPath}/${file.name}`, content, { create: true, parents: true });
-      }
-  
-      // Get the IPFS hash of the local parent directory
-      const parentDir = directoryStructure[filesArray[0].webkitRelativePath];
-      const ipfsHash = await ipfsClient.files.stat(`/${parentDir}`);
-      
-      console.log('IPFS Hash:', ipfsHash.cid.toString());
-      setDirIpfsHash(ipfsHash.cid.toString());
-    });
-  
-    fileInput.click();
-  };
-  const commit = async () => {
-    const repoName = prompt('Enter the name of the repository');
-    const branchName = prompt('Enter the name of the branch');
-    const message = prompt('Enter the commit message');
-    try {
-      provider = new ethers.BrowserProvider(window.ethereum)
-      signer = await provider.getSigner();
-      
-      const ipfsHash = dirIpfsHash;
-  
-      await contract.commit(repoName, branchName, message, ipfsHash);
-      console.log('Commit made to repository:', repoName);
-    }
-    catch (error) {
-      console.error('Error making commit:', error);
-    }
-  };
-
-  
-  const publish = async () => {
-    provider = new ethers.BrowserProvider(window.ethereum);
-    signer = await provider.getSigner();
-    const repoName = prompt('Enter the name of the repository');
-
-    await contract.getRepositoryPublic(repoName);
-  }
-
-
-  const viewRepo = async () => {
-    const repoName = prompt('Enter the name of the repository');
-    try {
-      const repoDetails=await contract.getRepositoryInfo(repoName);
+      const repoDetails = await contract.getRepositoryInfo(repoName);
       console.log('Repository details:', repoDetails);
       setRepoDetails(repoDetails);
     }
@@ -133,134 +64,113 @@ function App() {
       console.error('Error fetching repository details:', error);
     }
   };
-
-  
-
-
-
-
-  const clone = async () => {
+  const getAndPrintPublicRepositories = async () => {
     try {
-      const repoName = prompt('Enter the name of the repository');
-      if (!repoName) {
-        console.error('Repository name is required');
-        return;
-      }
-      const branchName = prompt('Enter the name of the branch');
-      if (!branchName) {
-        console.error('Branch name is required');
-        return;
-      }
-  
-      const hash = await contract.getLatestIpfsHash(repoName, branchName);
-      console.log('Latest commit IPFS hash:', hash);
-
+      const publicRepos = await contract.getPublicRepositories();
+      console.log('Public repositories:', publicRepos);
+      //const sortedPublicRepos = [...publicRepos].sort();
+      //setPublicRepos(sortedPublicRepos);
+      setPublicRepos(publicRepos);
     } catch (error) {
-      console.error('Error downloading folder:', error);
+      console.error('Error getting public repositories:', error);
     }
   };
 
-   const joinAsCollaborator = async () => {
-    const repoName = prompt('Enter the name of the repository');
-    if (!repoName) {
-      console.error('Repository name is required');
-      return;
-    }
+  const joinAsCollaborator = async (repoName) => {
+
     const etherAmount = prompt('Enter the amount of ether to send');
 
-  
     try {
+      provider = new ethers.BrowserProvider(window.ethereum)
       const signer = await provider.getSigner();
-
       const txOptions = {
         value: ethers.parseEther(etherAmount)
       };
-  
+
       const tx = await contract.connect(signer).addCollaborator(repoName, txOptions);
       await tx.wait();
-  
+
       console.log('Joined as collaborator for repository:', repoName);
     } catch (error) {
       console.error('Error joining as collaborator:', error);
     }
   };
-  const getLatestIpfsHash = async () => {
-    const repoName = prompt('Enter the name of the repository');
-    const branchName = prompt('Enter the name of the branch');
-    const ipfsHash = await contract.getLatestIpfsHash(repoName, branchName);
-    setLatestIpfsHash(ipfsHash);
+  const handleSearchChange = (event) => {
+    setSearchTerm(event.target.value);
   };
-  const createBranch = async () => {
-    const repoName = prompt('Enter the name of the repository');
-    const branchName = prompt('Enter the name of the branch');
+  const myRepo = async () => {
     try {
-      await contract.createBranch(repoName, branchName);
-      console.log('Created branch for repository:', repoName);
-    }
-    catch (error) {
-      console.error('Error creating branch:', error);
-    }
-  };
-  const createPullRequest = async () => {
-    const repoName = prompt('Enter the name of the repository');
-    const fromBranch = prompt('Enter the name of the from branch');
-    const toBranch = prompt('Enter the name of the to branch');
-    const commitId = prompt('Enter the commit id');
-    try {
-      await contract.createPullRequest(repoName, fromBranch, toBranch, commitId);
-      console.log('Created pull request for repository:', repoName);
-    }
-    catch (error) {
-      console.error('Error creating pull request:', error);
-    }
-  };
-  
-  const approvePullRequest = async () => {
-    const repoName = prompt('Enter the name of the repository');
-    const pullRequestId = prompt('Enter the pull request id');
-    try {
-      await contract.approvePullRequest(repoName, pullRequestId);
-      console.log('Approved pull request for repository:', repoName);
-    }
-    catch (error) {
-      console.error('Error approving pull request:', error);
+      const collaboratorRepos = await contract.getCollaboratorRepositories(account);
+      console.log('Collaborator repositories for user:', account, collaboratorRepos);
+      setCollaboratorRepos(collaboratorRepos);
+    } catch (error) {
+      console.error('Error getting collaborator repositories:', error);
     }
   };
 
 
 
   return (
-    <div className="App">
-      <header className="App-header">
-        <p>Click the button to upload files</p>
-        <div style={{ position: 'absolute', top: 0, right: 0, padding: '1em' }}>
-          {account}
-        </div>
-        <button onClick={viewRepo} disabled={!authenticated}>View Repo</button>
-        {repoDetails && (
-          <div>
-            <h2>Repository Details</h2>
-            <p>Name: {repoDetails[0]}</p>
-            <p>Latest Commit ID: {repoDetails[1]}</p>
-            <p>Branches: {repoDetails[2].join(', ')}</p>
-            <p>Collaborators: {repoDetails[3].join(', ')}</p>
+    <div className="App" >
+      {authenticated ? (
+        <header className="App-header">
+          <div className="header-container">
+            <div className="dropdown">
+            <button className="logo-button" onClick={myRepo} >
+                <img src={CodeChain_png} alt="CodeChain Logo" className="codechain-logo-logged-in" />
+              </button>
+              <ul className="dropdown-menu">
+                <h2>My Repos</h2>
+                {collaboratorRepos.map((repo, index) => (
+                  <li key={index}>{repo}</li>
+                ))}
+              </ul>
+            </div>
+            <input
+              className="search-bar"
+              type="search"
+              placeholder={searchTerm ? "" : "Search repositories..."}
+              value={searchTerm}
+              onChange={handleSearchChange}
+              onFocus={(e) => e.target.placeholder = ""}
+              onBlur={(e) => e.target.placeholder = "Search repositories..."}
+            />
+            <p>Account: {account}</p>
           </div>
-        )}
-        <button onClick={authenticate}>Connect MetaMask</button> 
-        <button onClick={clone} disabled={!authenticated}>Clone</button>
-        <button onClick={handleUpload} disabled={!authenticated || uploading}>
-          {uploading ? 'Uploading...' : 'Upload'}
-        </button>
-        <button onClick={getLatestIpfsHash} disabled={!authenticated}>Get Latest IPFS Hash</button>
-      <p>Latest IPFS Hash: {latestIpfsHash}</p>
-        <button onClick={joinAsCollaborator} disabled={!authenticated}>Join as Collaborator</button>
-        <button onClick={handleInit} disabled={!authenticated}>Init your project</button>
-        <button onClick={commit} disabled={!authenticated}>Commit</button>
-        <button onClick={createPullRequest} disabled={!authenticated}>Create Pull Request</button>
-        <button onClick={approvePullRequest} disabled={!authenticated}>Approve Pull Request</button>
-        <button onClick={createBranch} disabled={!authenticated}>Create Branch</button>
-        <button onClick={publish} disabled={!authenticated}>Set Public</button>
+          <div className="main-content">
+            <h1 className="title"> Public Repositories </h1>
+
+            <div className="public-repos">
+              {publicRepos
+                .filter((repo) => repo.toLowerCase().includes(searchTerm.toLowerCase()))
+                .map((repo, index) => (
+                  <details key={index}>
+                    <summary onClick={() => typeof repo === 'string' && viewRepo(repo)}><h1>{repo}</h1></summary>
+                    {repoDetails && repoDetails[0] === repo && (
+                      <div>
+                        <p>Repository Details:</p>
+                        <p>Description: :{repoDetails[1]} </p>
+                        <p>Branches: {repoDetails[3].join(', ')}</p>
+                        <p>Collaborators: {repoDetails[4].join(', ')}</p>
+                        <button onClick={() => joinAsCollaborator(repo)} className="connect-button">Join as collaborator
+                        </button>
+                      </div>
+                    )}
+
+                  </details>
+                ))}
+            </div>
+          </div>
+          {/* Other main screen content */}
         </header>
+      ) : (
+        <div className="login-container">
+          <img src={CodeChain_png} alt="CodeChain Logo" className="codechain-logo" />
+          <button onClick={authenticate} className="connect-button">
+            Connect to MetaMask
+          </button>
+        </div>
+      )}
     </div>
   );
 }

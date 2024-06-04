@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+ // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
@@ -26,7 +26,7 @@ contract CodeChain {
         string[] branchNames;
         address[] collaborators;
         mapping(uint256 => PullRequest) pullRequests;
-        bool isPrivate;
+        bool isPrivate ;
     }
 
     struct PullRequest {
@@ -44,9 +44,7 @@ contract CodeChain {
 
     event RepositoryCreated(string repoName);
     event BranchCreated(string repoName, string branchName);
-    event CommitMade(string repoName, string branchName, uint256 commitId, string message, string ipfsHash);
     event CollaboratorAdded(string repoName, address collaborator);
-    event PullRequestCreated(string repoName, string fromBranch, string toBranch, address author, uint256 commitId);
     event PullRequestApproved(string repoName, uint256 pullRequestId, address approver);
 
     modifier repoExists(string memory repoName) {
@@ -86,7 +84,11 @@ contract CodeChain {
 
     function setRepositoryPublic(string memory repoName) public repoExists(repoName) onlyCollaborator(repoName) {
         Repository storage repo = repositories[repoName];
-        repo.isPrivate = false;
+        if (repo.isPrivate==true) {
+            repo.isPrivate = false;
+        }else {
+            repo.isPrivate = true;
+        }
     }
 
     function createBranch(string memory repoName, string memory branchName) public repoExists(repoName) onlyCollaborator(repoName) {
@@ -116,25 +118,20 @@ contract CodeChain {
 
         branch.latestCommitId = commitId;
         repo.latestCommitId = commitId;
-
-        emit CommitMade(repoName, branchName, commitId, message, ipfsHash);
     }
 
-    function createPullRequest(string memory repoName, string memory fromBranch, string memory toBranch, uint256 commitId) public repoExists(repoName) branchExists(repoName, fromBranch) branchExists(repoName, toBranch) onlyCollaborator(repoName)  {
-        Repository storage repo = repositories[repoName];
-        require(commitId <= repo.latestCommitId, "Invalid commit id");
+function createPullRequest(string memory repoName, string memory fromBranch, string memory toBranch) public repoExists(repoName) branchExists(repoName, fromBranch) branchExists(repoName, toBranch) onlyCollaborator(repoName) {
+    Repository storage repo = repositories[repoName];
 
-        latestPullRequestId++;
-        PullRequest storage newPullRequest = repo.pullRequests[latestPullRequestId];
-        newPullRequest.fromBranch = fromBranch;
-        newPullRequest.toBranch = toBranch;
-        newPullRequest.author = msg.sender;
-        newPullRequest.commitId = repo.branches[fromBranch].latestCommitId;
-        newPullRequest.status = false;
+    latestPullRequestId++;
+    PullRequest storage newPullRequest = repo.pullRequests[latestPullRequestId];
+    newPullRequest.fromBranch = fromBranch;
+    newPullRequest.toBranch = toBranch;
+    newPullRequest.author = msg.sender;
+    newPullRequest.commitId = repo.branches[fromBranch].latestCommitId;
+    newPullRequest.status = false;
 
-        emit PullRequestCreated(repoName, fromBranch, toBranch, msg.sender, commitId);
-
-    }
+}
 
 
     function approvePullRequest(string memory repoName, uint256 pullRequestId) public repoExists(repoName) onlyCollaborator(repoName) {
@@ -190,7 +187,7 @@ contract CodeChain {
         string[] memory publicRepos = new string[](repoNames.length);
         uint256 count = 0;
         for (uint i = 0; i < repoNames.length; i++) {
-            if (!repositories[repoNames[i]].isPrivate) {
+            if (repositories[repoNames[i]].isPrivate==false) {
                 publicRepos[count] = repoNames[i];
                 count++;
             }
@@ -233,7 +230,7 @@ contract CodeChain {
         return false;
     }
 
-    function getRepositoryInfo(string memory repoName) public view repoExists(repoName) isRepoPrivate(repoName) returns (
+    function getRepositoryInfo(string memory repoName) public view repoExists(repoName)  returns (
         string memory name, 
         string memory description,
         uint256 latestCommitId, 
@@ -285,6 +282,25 @@ contract CodeChain {
     function setRepoDescription(string memory repoName, string memory description) public repoExists(repoName) onlyCollaborator(repoName) {
         Repository storage repo = repositories[repoName];
         repo.description = description;
+    }
+    function getCollaboratorRepositories(address user) public view returns (string[] memory) {
+        string[] memory collaboratorRepos = new string[](repoNames.length);
+        uint256 count = 0;
+        for (uint i = 0; i < repoNames.length; i++) {
+            if (isCollaborator(repoNames[i], user)) {
+                collaboratorRepos[count] = repoNames[i];
+                count++;
+            }
+        }
+        string[] memory trimmedCollaboratorRepos = new string[](count);
+        for (uint j = 0; j < count; j++) {
+            trimmedCollaboratorRepos[j] = collaboratorRepos[j];
+        }
+        return trimmedCollaboratorRepos;
+    }
+    //return the id of the latest pull request id number 
+    function getLatestPullRequestId() public view returns (uint256) {
+        return latestPullRequestId;
     }
 }
 
