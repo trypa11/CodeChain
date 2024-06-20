@@ -1,8 +1,11 @@
 CodeChain 
 Git-like application on a Blockchain
+App.js->web application that interacts with smart contract
+CodeChain.sol->Smart contract
+
 
 Before you start:
-It's requirement to have to Node.js and IPFS kubo on your computer
+It's requirement to have Node.js and IPFS kubo on your computer
 
 IPFS set up:
 ipfs init 
